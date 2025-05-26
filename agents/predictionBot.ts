@@ -1,11 +1,29 @@
-export async function runPredictionLoop(payload: any) {
-  console.log("📥 FinSynapse Triggered:", payload)
+// Your agentic prediction system
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 
-  const asset = payload.asset || 'BTC'
-  const prediction = Math.random() > 0.5 ? 'buy' : 'sell'
-  const confidence = (Math.random() * 0.5 + 0.5).toFixed(2)
+export class PredictionBot {
+  private supabase = createServerSupabaseClient()
 
-  console.log("📈 Prediction:", { asset, prediction, confidence })
+  async executePredictionLoop(webhookData: any) {
+    // Your FinSynapse logic here
+    console.log("Executing agentic prediction loop...")
 
-  // TODO: Save to Supabase or return to frontend
+    // Safe to use all your custom logic
+    const prediction = await this.generatePrediction(webhookData)
+
+    // Store in database
+    await this.supabase.from("predictions").insert([prediction])
+
+    return prediction
+  }
+
+  private async generatePrediction(data: any) {
+    // Your AI prediction logic
+    return {
+      asset: data.symbol,
+      prediction: "bullish",
+      confidence: 0.85,
+      reasoning: "FinSynapse analysis indicates...",
+    }
+  }
 }

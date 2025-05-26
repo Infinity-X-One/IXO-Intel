@@ -7,15 +7,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const supabase = createServerSupabaseClient()
     const id = params.id
 
-    const { data, error } = await supabase
-      .from("predictions")
-      .select(`
-        *,
-        agentic_bots(id, name, role),
-        prediction_refinements(*)
-      `)
-      .eq("id", id)
-      .single()
+    // Get the prediction using actual schema
+    const { data: prediction, error } = await supabase.from("predictions").select("*").eq("id", id).single()
 
     if (error) {
       if (error.code === "PGRST116") {
@@ -24,7 +17,37 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       throw error
     }
 
-    return NextResponse.json(data)
+    // Get bot information if loop_id exists
+    if (prediction.loop_id) {
+      const { data: bot, error: botError } = await supabase
+        .from("agentic_bots")
+        .select("id, name, role")
+        .eq("id", prediction.loop_id)
+        .single()
+
+      if (!botError && bot) {
+        prediction.agentic_bots = bot
+      }
+    }
+
+    // Transform to expected format
+    const transformedPrediction = {
+      id: prediction.id,
+      asset_symbol: prediction.asset,
+      signal_type: prediction.source,
+      prediction_direction: prediction.sentiment,
+      confidence_score: prediction.score,
+      risk_score: null,
+      reasons: prediction.raw_prompt,
+      prediction_timestamp: prediction.created_at,
+      agent_id: prediction.loop_id,
+      outcome: null,
+      accuracy: null,
+      delta_error: null,
+      agentic_bots: prediction.agentic_bots,
+    }
+
+    return NextResponse.json(transformedPrediction)
   } catch (error) {
     console.error("Error fetching prediction:", error)
     return NextResponse.json({ error: "Failed to fetch prediction" }, { status: 500 })
@@ -38,52 +61,38 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const id = params.id
     const body = await request.json()
 
-    // Update prediction outcome
+    // For now, we'll store outcome info in tags since the schema doesn't have outcome columns
+    const { data: currentPrediction } = await supabase.from("predictions").select("tags").eq("id", id).single()
+
+    const updatedTags = [...(currentPrediction?.tags || []), `outcome:${body.outcome}`, `accuracy:${body.accuracy}`]
+
     const { data, error } = await supabase
       .from("predictions")
       .update({
-        outcome: body.outcome,
-        accuracy: body.accuracy,
-        delta_error: body.delta_error,
+        tags: updatedTags,
       })
       .eq("id", id)
       .select()
 
     if (error) throw error
 
-    // Update bot accuracy if outcome is provided
-    if (body.outcome && data?.[0]?.prediction_made_by) {
-      const botId = data[0].prediction_made_by
-
-      // Get current bot stats
-      const { data: botStats } = await supabase
-        .from("agent_accuracy_logs")
-        .select("*")
-        .eq("bot_id", botId)
-        .order("log_timestamp", { ascending: false })
-        .limit(1)
-        .single()
-
-      const totalPredictions = (botStats?.total_predictions || 0) + 1
-      const correctPredictions =
-        (botStats?.correct_predictions || 0) + (body.outcome === data[0].predicted_direction ? 1 : 0)
-      const avgConfidence =
-        ((botStats?.avg_confidence || 0) * (totalPredictions - 1) + (data[0].confidence_score || 0)) / totalPredictions
-      const accuracyRate = correctPredictions / totalPredictions
-
-      // Insert new accuracy log
-      await supabase.from("agent_accuracy_logs").insert([
-        {
-          bot_id: botId,
-          total_predictions: totalPredictions,
-          correct_predictions: correctPredictions,
-          avg_confidence: avgConfidence,
-          accuracy_rate: accuracyRate,
-        },
-      ])
+    // Transform response
+    const transformedPrediction = {
+      id: data[0].id,
+      asset_symbol: data[0].asset,
+      signal_type: data[0].source,
+      prediction_direction: data[0].sentiment,
+      confidence_score: data[0].score,
+      risk_score: null,
+      reasons: data[0].raw_prompt,
+      prediction_timestamp: data[0].created_at,
+      agent_id: data[0].loop_id,
+      outcome: body.outcome,
+      accuracy: body.accuracy,
+      delta_error: body.delta_error,
     }
 
-    return NextResponse.json(data?.[0])
+    return NextResponse.json(transformedPrediction)
   } catch (error) {
     console.error("Error updating prediction:", error)
     return NextResponse.json({ error: "Failed to update prediction" }, { status: 500 })

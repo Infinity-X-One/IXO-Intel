@@ -40,12 +40,6 @@ interface Prediction {
   }> | null
 }
 
-// Helper function to validate UUID format
-function isValidUUID(str: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-  return uuidRegex.test(str)
-}
-
 export default function PredictionDetailPage({ params }: PredictionDetailProps) {
   const router = useRouter()
   const [prediction, setPrediction] = useState<Prediction>()
@@ -54,26 +48,14 @@ export default function PredictionDetailPage({ params }: PredictionDetailProps) 
   const [updatingOutcome, setUpdatingOutcome] = useState(false)
 
   useEffect(() => {
-    // Check if the ID is valid before making the API call
-    if (!isValidUUID(params.id)) {
-      setError("Invalid prediction ID format")
-      setLoading(false)
-      return
-    }
-
     const fetchPrediction = async () => {
       try {
         const response = await fetch(`/api/predictions/${params.id}`)
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error("Prediction not found")
-          }
-          throw new Error("Failed to fetch prediction")
-        }
+        if (!response.ok) throw new Error("Failed to fetch prediction")
         const data = await response.json()
         setPrediction(data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error loading prediction details")
+        setError("Error loading prediction details")
         console.error(err)
       } finally {
         setLoading(false)
@@ -130,60 +112,8 @@ export default function PredictionDetailPage({ params }: PredictionDetailProps) 
     return <div className="flex justify-center p-8">Loading prediction details...</div>
   }
 
-  if (error) {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Prediction Not Found</h1>
-          <Button variant="outline" onClick={() => router.back()}>
-            Back
-          </Button>
-        </div>
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-center space-y-4">
-              <div className="text-red-500 text-lg">{error}</div>
-              <p className="text-muted-foreground">
-                The prediction you're looking for doesn't exist or the ID format is invalid.
-              </p>
-              <div className="flex gap-2 justify-center">
-                <Button onClick={() => router.push("/predictions")}>View All Predictions</Button>
-                <Button variant="outline" onClick={() => router.push("/predictions/new")}>
-                  Create New Prediction
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!prediction) {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Prediction Not Found</h1>
-          <Button variant="outline" onClick={() => router.back()}>
-            Back
-          </Button>
-        </div>
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-center space-y-4">
-              <div className="text-muted-foreground text-lg">Prediction not found</div>
-              <p className="text-muted-foreground">The prediction you're looking for doesn't exist.</p>
-              <div className="flex gap-2 justify-center">
-                <Button onClick={() => router.push("/predictions")}>View All Predictions</Button>
-                <Button variant="outline" onClick={() => router.push("/predictions/new")}>
-                  Create New Prediction
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
+  if (error || !prediction) {
+    return <div className="text-red-500 p-8">{error || "Prediction not found"}</div>
   }
 
   return (
@@ -211,7 +141,7 @@ export default function PredictionDetailPage({ params }: PredictionDetailProps) 
                   {prediction.prediction_direction || "Unknown"}
                 </CardTitle>
                 <CardDescription>
-                  {prediction.signal_type || "MARKET"} Signal •{" "}
+                  {prediction.signal_type || "MARKET"} Signal •
                   {new Date(prediction.prediction_timestamp).toLocaleString()}
                 </CardDescription>
               </div>

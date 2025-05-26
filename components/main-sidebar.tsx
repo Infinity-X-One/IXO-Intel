@@ -7,13 +7,38 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Building2, Bot, Network, Globe, Share2, FileUp, Database, Key, Home, Menu, TrendingUp } from "lucide-react"
+import {
+  Building2,
+  Bot,
+  Network,
+  Globe,
+  Share2,
+  FileUp,
+  Database,
+  Key,
+  Home,
+  Menu,
+  TrendingUp,
+  TestTube,
+  BarChart3,
+  Bell,
+} from "lucide-react"
 
 const menuItems = [
   {
     title: "Home",
     icon: Home,
     href: "/",
+  },
+  {
+    title: "Market Data",
+    icon: BarChart3,
+    href: "/market-data",
+  },
+  {
+    title: "Email Alerts",
+    icon: Bell,
+    href: "/alerts",
   },
   {
     title: "Agentic Bots",
@@ -24,6 +49,11 @@ const menuItems = [
     title: "Predictions",
     icon: TrendingUp,
     href: "/predictions",
+  },
+  {
+    title: "Test Predictions API",
+    icon: TestTube,
+    href: "/test-predictions",
   },
   {
     title: "Industry Intelligence",
@@ -75,13 +105,17 @@ export function MainSidebar() {
     <>
       {/* Mobile Sidebar */}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild className="md:hidden absolute top-4 left-4 z-50">
-          <Button variant="ghost" size="icon">
+        <SheetTrigger asChild className="md:hidden fixed top-4 left-4 z-50">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="bg-black border border-neon text-neon hover:bg-neon hover:text-black"
+          >
             <Menu className="h-6 w-6" />
             <span className="sr-only">Toggle Menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-[280px]">
+        <SheetContent side="left" className="p-0 w-[280px] bg-background">
           <MobileSidebarContent pathname={pathname} setOpen={setOpen} />
         </SheetContent>
       </Sheet>
@@ -116,7 +150,7 @@ function MobileSidebarContent({ pathname, setOpen }: { pathname: string; setOpen
               href={item.href}
               onClick={() => setOpen(false)}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-[44px]",
                 "hover:text-neon hover:shadow-glow",
                 pathname === item.href ? "bg-secondary text-secondary-foreground" : "hover:bg-secondary/50",
               )}

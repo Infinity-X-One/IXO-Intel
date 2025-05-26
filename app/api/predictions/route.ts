@@ -8,14 +8,33 @@ const supabase = createServerSupabaseClient()
 
 export async function GET() {
   try {
+    // Get predictions using the actual column structure
     const { data: predictions, error } = await supabase
       .from("predictions")
-      .select("*, agentic_bots(id, name)")
-      .order("prediction_timestamp", { ascending: false })
+      .select("*")
+      .order("created_at", { ascending: false })
 
     if (error) throw error
 
-    return NextResponse.json(predictions)
+    // Transform the data to match our expected format
+    const transformedPredictions =
+      predictions?.map((prediction) => ({
+        id: prediction.id,
+        asset_symbol: prediction.asset,
+        signal_type: prediction.source || "MARKET",
+        prediction_direction: prediction.sentiment,
+        confidence_score: prediction.score,
+        risk_score: null,
+        reasons: prediction.raw_prompt,
+        prediction_timestamp: prediction.created_at,
+        agent_id: prediction.loop_id,
+        outcome: null,
+        accuracy: null,
+        delta_error: null,
+        agentic_bots: null,
+      })) || []
+
+    return NextResponse.json(transformedPredictions)
   } catch (error) {
     console.error("Error fetching predictions:", error)
     return NextResponse.json({ error: "Failed to fetch predictions" }, { status: 500 })
@@ -35,7 +54,10 @@ export async function POST(request: Request) {
     // Get bot details for context
     const { data: bot, error: botError } = await supabase.from("agentic_bots").select("*").eq("id", bot_id).single()
 
-    if (botError) throw botError
+    if (botError) {
+      console.error("Bot fetch error:", botError)
+      return NextResponse.json({ error: "Bot not found" }, { status: 404 })
+    }
 
     // If manual prediction data is provided, use it
     if (body.predicted_direction && body.confidence_score && body.reason_summary) {
@@ -43,22 +65,33 @@ export async function POST(request: Request) {
         .from("predictions")
         .insert([
           {
-            asset_symbol: asset,
-            signal_type: signal_type || "MARKET",
-            prediction_direction: body.predicted_direction,
-            confidence_score: body.confidence_score,
-            risk_score: body.risk_score || 0.5,
-            reasons: body.reason_summary,
-            prediction_type: "PRICE",
-            agent_id: bot_id,
-            prediction_timestamp: new Date().toISOString(),
+            asset: asset,
+            sentiment: body.predicted_direction,
+            score: body.confidence_score,
+            source: signal_type || "MARKET",
+            loop_id: bot_id,
+            raw_prompt: body.reason_summary,
+            tags: [signal_type || "MARKET", "manual"],
+            timestamp: new Date().toISOString(),
           },
         ])
         .select()
 
-      if (error) throw error
+      if (error) {
+        console.error("Database insert error:", error)
+        throw error
+      }
 
-      return NextResponse.json(data[0])
+      return NextResponse.json({
+        id: data[0].id,
+        asset_symbol: data[0].asset,
+        signal_type: data[0].source,
+        prediction_direction: data[0].sentiment,
+        confidence_score: data[0].score,
+        reasons: data[0].raw_prompt,
+        prediction_timestamp: data[0].created_at,
+        agent_id: data[0].loop_id,
+      })
     }
 
     // Generate prediction using AI
@@ -112,30 +145,43 @@ export async function POST(request: Request) {
       }
     } catch (e) {
       console.error("Failed to parse AI response:", e)
+      console.error("AI Response:", text)
       return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 })
     }
 
-    // Insert prediction into database
+    // Insert prediction into database using actual schema
     const { data, error } = await supabase
       .from("predictions")
       .insert([
         {
-          asset_symbol: asset,
-          signal_type: signal_type || "MARKET",
-          prediction_direction: predictionData.predicted_direction,
-          confidence_score: predictionData.confidence_score,
-          risk_score: predictionData.risk_score,
-          reasons: predictionData.reason_summary,
-          prediction_type: "PRICE",
-          agent_id: bot_id,
-          prediction_timestamp: new Date().toISOString(),
+          asset: asset,
+          sentiment: predictionData.predicted_direction,
+          score: predictionData.confidence_score,
+          source: signal_type || "MARKET",
+          loop_id: bot_id,
+          raw_prompt: predictionData.reason_summary,
+          tags: [signal_type || "MARKET", "ai-generated"],
+          timestamp: new Date().toISOString(),
         },
       ])
       .select()
 
-    if (error) throw error
+    if (error) {
+      console.error("Database insert error:", error)
+      throw error
+    }
 
-    return NextResponse.json(data[0])
+    return NextResponse.json({
+      id: data[0].id,
+      asset_symbol: data[0].asset,
+      signal_type: data[0].source,
+      prediction_direction: data[0].sentiment,
+      confidence_score: data[0].score,
+      risk_score: predictionData.risk_score,
+      reasons: data[0].raw_prompt,
+      prediction_timestamp: data[0].created_at,
+      agent_id: data[0].loop_id,
+    })
   } catch (error) {
     console.error("Error creating prediction:", error)
     return NextResponse.json({ error: "Failed to create prediction" }, { status: 500 })

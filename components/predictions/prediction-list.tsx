@@ -9,14 +9,14 @@ import Link from "next/link"
 
 interface Prediction {
   id: string
-  asset: string
+  asset_symbol: string
   signal_type: string | null
-  predicted_direction: string | null
+  prediction_direction: string | null
   confidence_score: number | null
   risk_score: number | null
-  reason_summary: string | null
+  reasons: string | null
   prediction_timestamp: string
-  prediction_made_by: string | null
+  agent_id: string | null
   outcome: string | null
   accuracy: number | null
   delta_error: number | null
@@ -94,8 +94,8 @@ export function PredictionList() {
                 <div className="flex justify-between items-start">
                   <div>
                     <CardTitle className="flex items-center gap-2">
-                      {prediction.asset}
-                      {getDirectionIcon(prediction.predicted_direction)}
+                      {prediction.asset_symbol}
+                      {getDirectionIcon(prediction.prediction_direction)}
                     </CardTitle>
                     <CardDescription>{prediction.signal_type || "MARKET"} Signal</CardDescription>
                   </div>
@@ -104,14 +104,14 @@ export function PredictionList() {
                     className={
                       !prediction.outcome
                         ? "text-yellow-400 border-yellow-400"
-                        : prediction.outcome === prediction.predicted_direction
+                        : prediction.outcome === prediction.prediction_direction
                           ? "text-green-500 border-green-500"
                           : "text-red-400 border-red-400"
                     }
                   >
                     {!prediction.outcome
                       ? "Pending"
-                      : prediction.outcome === prediction.predicted_direction
+                      : prediction.outcome === prediction.prediction_direction
                         ? "Correct"
                         : "Incorrect"}
                   </Badge>
@@ -122,8 +122,8 @@ export function PredictionList() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Direction:</span>
                     <span className="flex items-center gap-1">
-                      {getDirectionIcon(prediction.predicted_direction)}
-                      {prediction.predicted_direction || "Unknown"}
+                      {getDirectionIcon(prediction.prediction_direction)}
+                      {prediction.prediction_direction || "Unknown"}
                     </span>
                   </div>
                   <div className="flex justify-between">
