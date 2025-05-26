@@ -2,12 +2,12 @@ import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { getMultipleAssetPrices } from "@/lib/services/market-data"
 
-// GET cached market data
+// GET cached market data with enhanced caching
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const symbols = searchParams.get("symbols")?.split(",") || []
-    const maxAge = Number.parseInt(searchParams.get("maxAge") || "300") // 5 minutes default
+    const maxAge = Number.parseInt(searchParams.get("maxAge") || "600") // 10 minutes default (increased)
 
     const supabase = createServerSupabaseClient()
 
@@ -20,25 +20,35 @@ export async function GET(request: Request) {
         .order("timestamp", { ascending: false })
 
       if (error) throw error
-      return NextResponse.json(data)
+      return NextResponse.json(data || [])
     }
 
-    // Get specific symbols
+    // Get specific symbols from cache first
     const { data: cachedData, error } = await supabase
       .from("market_data_cache")
       .select("*")
-      .in("symbol", symbols)
+      .in(
+        "symbol",
+        symbols.map((s) => s.toUpperCase()),
+      )
       .gte("timestamp", new Date(Date.now() - maxAge * 1000).toISOString())
 
-    if (error) throw error
+    if (error) {
+      console.error("Database error:", error)
+      // If database fails, fetch fresh data
+      const freshData = await getMultipleAssetPrices(symbols)
+      return NextResponse.json(freshData)
+    }
 
-    const cachedSymbols = cachedData.map((item) => item.symbol)
-    const missingSymbols = symbols.filter((symbol) => !cachedSymbols.includes(symbol))
+    const cachedSymbols = (cachedData || []).map((item) => item.symbol)
+    const missingSymbols = symbols.filter((symbol) => !cachedSymbols.includes(symbol.toUpperCase()))
 
-    // Fetch missing data from external APIs
-    let freshData = []
-    if (missingSymbols.length > 0) {
+    // Only fetch missing data if we have less than half cached
+    let freshData: any[] = []
+    if (missingSymbols.length > 0 && missingSymbols.length <= 5) {
+      // Limit to 5 symbols max
       try {
+        console.log(`Fetching fresh data for: ${missingSymbols.join(", ")}`)
         freshData = await getMultipleAssetPrices(missingSymbols)
 
         // Cache the fresh data
@@ -52,18 +62,23 @@ export async function GET(request: Request) {
             source: data.source,
           }))
 
-          await supabase.from("market_data_cache").upsert(cacheInserts, {
+          const { error: insertError } = await supabase.from("market_data_cache").upsert(cacheInserts, {
             onConflict: "symbol,source",
           })
+
+          if (insertError) {
+            console.error("Error caching data:", insertError)
+          }
         }
       } catch (error) {
         console.error("Error fetching fresh market data:", error)
+        // Continue with cached data only
       }
     }
 
     // Combine cached and fresh data
     const allData = [
-      ...cachedData.map((item) => ({
+      ...(cachedData || []).map((item) => ({
         symbol: item.symbol,
         price: Number.parseFloat(item.price),
         change: Number.parseFloat(item.change_amount || "0"),
@@ -77,21 +92,27 @@ export async function GET(request: Request) {
 
     return NextResponse.json(allData)
   } catch (error) {
-    console.error("Error fetching market data cache:", error)
+    console.error("Error in market data cache API:", error)
     return NextResponse.json({ error: "Failed to fetch market data" }, { status: 500 })
   }
 }
 
-// POST to manually refresh cache
+// POST to manually refresh cache (with rate limiting)
 export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { symbols } = body
 
-    if (!symbols || !Array.isArray(symbols)) {
-      return NextResponse.json({ error: "Symbols array is required" }, { status: 400 })
+    if (!symbols || !Array.isArray(symbols) || symbols.length > 10) {
+      return NextResponse.json(
+        {
+          error: "Symbols array is required (max 10 symbols)",
+        },
+        { status: 400 },
+      )
     }
 
+    console.log(`Manual refresh requested for: ${symbols.join(", ")}`)
     const freshData = await getMultipleAssetPrices(symbols)
     const supabase = createServerSupabaseClient()
 
@@ -109,7 +130,9 @@ export async function POST(request: Request) {
         onConflict: "symbol,source",
       })
 
-      if (error) throw error
+      if (error) {
+        console.error("Error caching refreshed data:", error)
+      }
     }
 
     return NextResponse.json({
