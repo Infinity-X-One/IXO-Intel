@@ -1,0 +1,311 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { ArrowDown, ArrowUp, Minus, Bot, RefreshCw, TrendingUp } from "lucide-react"
+
+interface PredictionDetailProps {
+  params: {
+    id: string
+  }
+}
+
+interface Prediction {
+  id: string
+  asset: string
+  signal_type: string | null
+  predicted_direction: string | null
+  confidence_score: number | null
+  risk_score: number | null
+  reason_summary: string | null
+  prediction_timestamp: string
+  prediction_made_by: string | null
+  outcome: string | null
+  accuracy: number | null
+  delta_error: number | null
+  agentic_bots?: {
+    id: string
+    name: string
+    role: string | null
+  } | null
+  prediction_refinements?: Array<{
+    id: string
+    refinement_notes: string | null
+    new_confidence: number | null
+    reason_for_change: string | null
+    refined_at: string
+  }> | null
+}
+
+export default function PredictionDetailPage({ params }: PredictionDetailProps) {
+  const router = useRouter()
+  const [prediction, setPrediction] = useState<Prediction>()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [updatingOutcome, setUpdatingOutcome] = useState(false)
+
+  useEffect(() => {
+    const fetchPrediction = async () => {
+      try {
+        const response = await fetch(`/api/predictions/${params.id}`)
+        if (!response.ok) throw new Error("Failed to fetch prediction")
+        const data = await response.json()
+        setPrediction(data)
+      } catch (err) {
+        setError("Error loading prediction details")
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchPrediction()
+  }, [params.id])
+
+  const updateOutcome = async (outcome: string) => {
+    if (!prediction) return
+
+    try {
+      setUpdatingOutcome(true)
+
+      const response = await fetch(`/api/predictions/${params.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          outcome,
+          accuracy: outcome === prediction.predicted_direction ? 1.0 : 0.0,
+          delta_error: outcome === prediction.predicted_direction ? 0.0 : 1.0,
+        }),
+      })
+
+      if (!response.ok) throw new Error("Failed to update prediction")
+
+      const data = await response.json()
+      setPrediction(data)
+    } catch (err) {
+      console.error("Error updating prediction:", err)
+      alert("Failed to update prediction outcome")
+    } finally {
+      setUpdatingOutcome(false)
+    }
+  }
+
+  const getDirectionIcon = (direction: string | null) => {
+    if (!direction) return <Minus className="h-4 w-4" />
+
+    switch (direction.toUpperCase()) {
+      case "UP":
+        return <ArrowUp className="h-4 w-4 text-green-500" />
+      case "DOWN":
+        return <ArrowDown className="h-4 w-4 text-red-500" />
+      default:
+        return <Minus className="h-4 w-4 text-yellow-500" />
+    }
+  }
+
+  if (loading) {
+    return <div className="flex justify-center p-8">Loading prediction details...</div>
+  }
+
+  if (error || !prediction) {
+    return <div className="text-red-500 p-8">{error || "Prediction not found"}</div>
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <TrendingUp className="h-6 w-6 text-neon" />
+          {prediction.asset} Prediction
+        </h1>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.back()}>
+            Back
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  {prediction.asset}
+                  {getDirectionIcon(prediction.predicted_direction)}
+                  {prediction.predicted_direction || "Unknown"}
+                </CardTitle>
+                <CardDescription>
+                  {prediction.signal_type || "MARKET"} Signal •
+                  {new Date(prediction.prediction_timestamp).toLocaleString()}
+                </CardDescription>
+              </div>
+              <Badge
+                variant="outline"
+                className={
+                  !prediction.outcome
+                    ? "text-yellow-400 border-yellow-400"
+                    : prediction.outcome === prediction.predicted_direction
+                      ? "text-green-500 border-green-500"
+                      : "text-red-400 border-red-400"
+                }
+              >
+                {!prediction.outcome
+                  ? "Pending"
+                  : prediction.outcome === prediction.predicted_direction
+                    ? "Correct"
+                    : "Incorrect"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Confidence Score</h3>
+                <p>{prediction.confidence_score ? `${(prediction.confidence_score * 100).toFixed(1)}%` : "Unknown"}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Risk Score</h3>
+                <p>{prediction.risk_score ? `${(prediction.risk_score * 100).toFixed(1)}%` : "Unknown"}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Created By</h3>
+                <p className="flex items-center gap-1">
+                  <Bot className="h-3 w-3" />
+                  {prediction.agentic_bots?.name || "Unknown Bot"}
+                  {prediction.agentic_bots?.role && ` (${prediction.agentic_bots.role})`}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">Outcome</h3>
+                <p className="flex items-center gap-1">
+                  {prediction.outcome ? (
+                    <>
+                      {getDirectionIcon(prediction.outcome)}
+                      {prediction.outcome}
+                    </>
+                  ) : (
+                    "Not yet determined"
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground">Reason Summary</h3>
+              <p className="mt-1">{prediction.reason_summary || "No reason provided"}</p>
+            </div>
+
+            {!prediction.outcome && (
+              <div className="border p-4 rounded-md mt-4">
+                <h3 className="font-medium mb-2">Update Outcome</h3>
+                <div className="flex gap-2">
+                  <Button onClick={() => updateOutcome("UP")} disabled={updatingOutcome} className="flex-1">
+                    <ArrowUp className="h-4 w-4 mr-2" />
+                    UP
+                  </Button>
+                  <Button
+                    onClick={() => updateOutcome("NEUTRAL")}
+                    disabled={updatingOutcome}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Minus className="h-4 w-4 mr-2" />
+                    NEUTRAL
+                  </Button>
+                  <Button onClick={() => updateOutcome("DOWN")} disabled={updatingOutcome} className="flex-1">
+                    <ArrowDown className="h-4 w-4 mr-2" />
+                    DOWN
+                  </Button>
+                </div>
+                {updatingOutcome && (
+                  <div className="flex justify-center mt-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Prediction Stats</CardTitle>
+            <CardDescription>Performance metrics</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Status:</span>
+                <Badge
+                  variant="outline"
+                  className={
+                    !prediction.outcome
+                      ? "text-yellow-400 border-yellow-400"
+                      : prediction.outcome === prediction.predicted_direction
+                        ? "text-green-500 border-green-500"
+                        : "text-red-400 border-red-400"
+                  }
+                >
+                  {!prediction.outcome
+                    ? "Pending"
+                    : prediction.outcome === prediction.predicted_direction
+                      ? "Correct"
+                      : "Incorrect"}
+                </Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Accuracy:</span>
+                <span>{prediction.accuracy !== null ? `${(prediction.accuracy * 100).toFixed(0)}%` : "N/A"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Error:</span>
+                <span>{prediction.delta_error !== null ? prediction.delta_error.toFixed(2) : "N/A"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Refinements:</span>
+                <span>{prediction.prediction_refinements?.length || 0}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {prediction.prediction_refinements && prediction.prediction_refinements.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Prediction Refinements</CardTitle>
+            <CardDescription>History of updates to this prediction</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {prediction.prediction_refinements.map((refinement) => (
+                <div key={refinement.id} className="flex items-start p-3 rounded-md bg-secondary/50">
+                  <RefreshCw className="h-5 w-5 mr-3 mt-1" />
+                  <div className="flex-1">
+                    <div className="flex justify-between">
+                      <h4 className="font-medium">
+                        Confidence updated to{" "}
+                        {refinement.new_confidence ? `${(refinement.new_confidence * 100).toFixed(1)}%` : "Unknown"}
+                      </h4>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(refinement.refined_at).toLocaleString()}
+                      </span>
+                    </div>
+                    {refinement.reason_for_change && <p className="text-sm mt-1">{refinement.reason_for_change}</p>}
+                    {refinement.refinement_notes && <p className="text-sm mt-1">{refinement.refinement_notes}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
